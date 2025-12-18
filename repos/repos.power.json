@@ -55,13 +55,13 @@
       "device": "begonia",
       "defconfig": "begonia_user_defconfig",
       "name": "Perf-KSU-Next-SUSFS",
-      "repo": "https://github.com/WuXing90/android_kernel_xiaomi_mt6785_w",
-      "branch": "16-dev"
+      "repo": "https://github.com/WuXing90/kernel_xiaomi_mt6785",
+      "branch": "erofs"
     },
     "withRoot": "ksun",
     "withSUSFS": true,
     "whichSUSFS": "susfs-159",
-    "withKPM": false,
+    "withKPM": true,
     "toolchains": [
       {
         "repo": "https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379",
