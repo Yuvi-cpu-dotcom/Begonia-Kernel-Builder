@@ -56,11 +56,11 @@
       "defconfig": "begonia_user_defconfig",
       "name": "Perf-KSU-Next-SUSFS",
       "repo": "https://github.com/WuXing90/kernel_xiaomi_mt6785",
-      "branch": "erofs"
+      "branch": "bka"
     },
     "withRoot": "ksun",
     "withSUSFS": true,
-    "whichSUSFS": "susfs-159",
+    "whichSUSFS": "susfs-200",
     "withKPM": true,
     "toolchains": [
       {
