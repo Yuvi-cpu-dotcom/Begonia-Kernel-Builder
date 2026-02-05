@@ -17,7 +17,7 @@ jobs:
   Set-repos:
     name: "🐂 Parse repos.json"
     runs-on: ubuntu-latest
-    if: github.repository_owner == 'WuXing90' && github.repository == 'WuXing90/Begonia-Kernel-Builder'
+    if: github.repository_owner == 'Yuvi-cpu-dotcom' && github.repository == 'Yuvi-cpu-dotcom/Begonia-Kernel-Builder'
     outputs:
       repos: ${{ steps.generate-matrix.outputs.repos }}
       builddate: ${{ steps.generate-builddate.outputs.builddate }}
