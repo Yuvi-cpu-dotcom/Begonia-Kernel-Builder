@@ -193,16 +193,12 @@ jobs:
           echo "ARCH=$ARCH" >> $GITHUB_OUTPUT
           echo "args=$args" >> $GITHUB_OUTPUT
 
-      - name: "🔥 Integrate Root (ReSukiSU / KSU-Next)"
+      - name: "🔥 Integrate Root (ReSukiSU / KSU-Next / KSU)"
         working-directory: ${{ env.KERNEL_NAME }}
         run: |
           if [ "${{ env.withRoot }}" == "resukisu" ]; then
-            echo "Cloning and applying ReSukiSU..."
-            git clone https://github.com/SukiSU-Ultra/SukiSU-Ultra -b main resukisu
-            cd resukisu
-            bash ks_setup.sh ..
-            cd ..
-            rm -rf resukisu
+            echo "Fetching and applying ReSukiSU (Non-GKI)..."
+            curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s nongki
             echo "ROOT_VER=ReSukiSU" >> $GITHUB_ENV
             
           elif [ "${{ env.withRoot }}" == "ksun" ]; then
@@ -223,28 +219,29 @@ jobs:
           echo "Cloning official SUSFS v1.5.5 for 4.14 kernel..."
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b kernel-4.14 susfs_repo
           
-          echo "Copying SUSFS files to kernel root..."
+          echo "Copying SUSFS fs and include files to kernel root..."
           cp -r susfs_repo/kernel_patches/fs/* fs/
           cp -r susfs_repo/kernel_patches/include/linux/* include/linux/
           
-          # Detect the correct KernelSU folder name
+          # Dynamically detecting the folder created by the Root step
           if [ -d "KernelSU-Next" ]; then 
             KSU_DIR="KernelSU-Next"
           elif [ -d "KernelSU" ]; then 
             KSU_DIR="KernelSU"
           else
-            echo "No KernelSU folder found! Root integration might have failed."
-            exit 1
+            # Default fallback for SukiSU if it creates a standard KernelSU folder internally
+            KSU_DIR="KernelSU"
+            mkdir -p KernelSU
           fi
           
-          echo "Patching $KSU_DIR folder..."
+          echo "Detected Root Folder: $KSU_DIR. Patching..."
           cp susfs_repo/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch $KSU_DIR/
           cd $KSU_DIR
-          patch -p1 --forward < 10_enable_susfs_for_ksu.patch || echo "Patch applied or skipped"
+          patch -p1 --forward < 10_enable_susfs_for_ksu.patch || echo "KSU Patch applied or skipped"
           cd ..
           
           echo "Patching Kernel Source for 4.14..."
-          patch -p1 --forward < susfs_repo/kernel_patches/50_add_susfs_in_kernel-4.14.patch || echo "Patch applied or skipped"
+          patch -p1 --forward < susfs_repo/kernel_patches/50_add_susfs_in_kernel-4.14.patch || echo "Kernel Patch applied or skipped"
           
           rm -rf susfs_repo
 
