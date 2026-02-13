@@ -228,22 +228,21 @@ jobs:
 
           git clone --recursive -j $(nproc) --branch $BKB_BRANCH https://github.com/vc-teahouse/susfs4ksu-begonia BKB
 
-      - name: "😋 Integrate KernelSU or KernelSU-Next"
-        id: integrate-kernelsu-next
+      - name: "🔥 Integrate ReSukiSU"
         working-directory: ${{ env.KERNEL_NAME }}
-        if: ${{ env.withRoot == 'ksu' || env.withRoot == 'sukisu' || env.withRoot == 'ksun' }}
-        env:
-          arch: ${{ steps.generate-args.outputs.ARCH }}
-          DEFCONFIG_NAME: ${{ env.DEFCONFIG_NAME }}
-          GH_PAT: ${{ secrets.GH_PAT }}
-          GITHUB_OUTPUT: ${{ github.output_path }}
-          withRoot: ${{ env.withRoot }}
-          withKPM: ${{ env.withKPM }}
-          KNAME: ${{ env.KNAME }}
+        if: ${{ env.withRoot == 'sukisu' || env.withRoot == 'resukisu' }}
         run: |
-          BKB_YML=releases
-          chmod +x BKB/kernel_patches/bkb/$BKB_YML/integrate_kernelsu.sh
-          ./BKB/kernel_patches/bkb/$BKB_YML/integrate_kernelsu.sh
+          echo "Cloning ReSukiSU-Ultra..."
+          git clone https://github.com/SukiSU-Ultra/SukiSU-Ultra -b main resukisu
+          
+          echo "Running ReSukiSU setup..."
+          cd resukisu
+          # Yahan ham root directory (.) pass kar rahe hain kyunki working-directory kernel name set hai
+          bash ks_setup.sh .. 
+          cd ..
+          
+          # Clean up setup files to avoid build conflicts
+          rm -rf resukisu
 
       - name: "🥷 Add SUSFS patches"
         id: add-susfs-patches
