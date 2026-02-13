@@ -10,7 +10,6 @@ on:
         type: boolean
         required: false
         default: true
-
   workflow_dispatch:
 
 jobs:
@@ -122,15 +121,12 @@ jobs:
           ANYKERNEL_REPO=$(echo $params | jq -r ".repo")
           ANYKERNEL_BRANCH=$(echo $params | jq -r ".branch")
           git clone --recursive --depth=1 -j $(nproc) --branch $ANYKERNEL_BRANCH $ANYKERNEL_REPO AnyKernel3
-
           echo "🤔 Setup Anykernel3 => ($ANYKERNEL_REPO)"
 
       - name: "🌟 Clone kernel source => (${{ env.KERNEL_REPO }})"
         run: |
           git clone --recursive --depth=1 -j $(nproc) --branch $KERNEL_BRANCH $KERNEL_REPO $KERNEL_NAME
           echo -e "\n⚠️ Kernel is at commit: $(git -C $KERNEL_NAME rev-parse HEAD)\n"
-
-          echo "🤔 Clone kernel source => ($KERNEL_REPO)"
 
       - name: "💫 Get toolchains"
         run: |
@@ -197,70 +193,65 @@ jobs:
           echo "ARCH=$ARCH" >> $GITHUB_OUTPUT
           echo "args=$args" >> $GITHUB_OUTPUT
 
-      - name: "🪡 Receiving scripts"
-        id: receiving-scripts
+      - name: "🔥 Integrate Root (ReSukiSU / KSU-Next)"
         working-directory: ${{ env.KERNEL_NAME }}
         run: |
-          if [ -d "./BKB" ]; then rm -rf "./BKB"; fi
-          BKB_BRANCH=main
-          git clone --recursive -j $(nproc) --branch $BKB_BRANCH https://github.com/vc-teahouse/susfs4ksu-begonia BKB
+          if [ "${{ env.withRoot }}" == "resukisu" ]; then
+            echo "Cloning and applying ReSukiSU..."
+            git clone https://github.com/SukiSU-Ultra/SukiSU-Ultra -b main resukisu
+            cd resukisu
+            bash ks_setup.sh ..
+            cd ..
+            rm -rf resukisu
+            echo "ROOT_VER=ReSukiSU" >> $GITHUB_ENV
+            
+          elif [ "${{ env.withRoot }}" == "ksun" ]; then
+            echo "Cloning and applying KernelSU-Next..."
+            curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+            echo "ROOT_VER=KSUN" >> $GITHUB_ENV
+            
+          else
+            echo "Cloning and applying standard KernelSU..."
+            curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
+            echo "ROOT_VER=KSU" >> $GITHUB_ENV
+          fi
 
-      - name: "🔥 Integrate ReSukiSU"
-        id: integrate-resukisu
+      - name: "🥷 Add Official Old SUSFS (v1.5.5 for 4.14)"
         working-directory: ${{ env.KERNEL_NAME }}
-        if: ${{ env.withRoot == 'sukisu' || env.withRoot == 'resukisu' }}
+        if: ${{ env.withSUSFS == 'true' }}
         run: |
-          echo "Cloning ReSukiSU-Ultra..."
-          git clone https://github.com/SukiSU-Ultra/SukiSU-Ultra -b main resukisu
+          echo "Cloning official SUSFS v1.5.5 for 4.14 kernel..."
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b kernel-4.14 susfs_repo
           
-          echo "Running ReSukiSU setup..."
-          cd resukisu
-          bash ks_setup.sh .. 
+          echo "Copying SUSFS files to kernel root..."
+          cp -r susfs_repo/kernel_patches/fs/* fs/
+          cp -r susfs_repo/kernel_patches/include/linux/* include/linux/
+          
+          # Detect the correct KernelSU folder name
+          if [ -d "KernelSU-Next" ]; then 
+            KSU_DIR="KernelSU-Next"
+          elif [ -d "KernelSU" ]; then 
+            KSU_DIR="KernelSU"
+          else
+            echo "No KernelSU folder found! Root integration might have failed."
+            exit 1
+          fi
+          
+          echo "Patching $KSU_DIR folder..."
+          cp susfs_repo/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch $KSU_DIR/
+          cd $KSU_DIR
+          patch -p1 --forward < 10_enable_susfs_for_ksu.patch || echo "Patch applied or skipped"
           cd ..
           
-          rm -rf resukisu
-          echo "ROOT_VERSION=ReSukiSU" >> $GITHUB_OUTPUT
-
-      - name: "😋 Integrate KernelSU or KernelSU-Next"
-        id: integrate-kernelsu-next
-        working-directory: ${{ env.KERNEL_NAME }}
-        if: ${{ env.withRoot == 'ksu' || env.withRoot == 'ksun' }}
-        env:
-          arch: ${{ steps.generate-args.outputs.ARCH }}
-          DEFCONFIG_NAME: ${{ env.DEFCONFIG_NAME }}
-          GH_PAT: ${{ secrets.GH_PAT }}
-          GITHUB_OUTPUT: ${{ github.output_path }}
-          withRoot: ${{ env.withRoot }}
-          withKPM: ${{ env.withKPM }}
-          KNAME: ${{ env.KNAME }}
-        run: |
-          BKB_YML=releases
-          chmod +x BKB/kernel_patches/bkb/$BKB_YML/integrate_kernelsu.sh
-          ./BKB/kernel_patches/bkb/$BKB_YML/integrate_kernelsu.sh
-
-      - name: "🥷 Add SUSFS patches"
-        id: add-susfs-patches
-        working-directory: ${{ env.KERNEL_NAME }}
-        if: ${{ (env.withRoot == 'ksu' || env.withRoot == 'sukisu' || env.withRoot == 'ksun' || env.withRoot == 'resukisu') && env.withSUSFS == 'true' }}
-        env:
-          arch: ${{ steps.generate-args.outputs.ARCH }}
-          DEFCONFIG_NAME: ${{ env.DEFCONFIG_NAME }}
-          GH_PAT: ${{ secrets.GH_PAT }}
-          GITHUB_OUTPUT: ${{ github.output_path }}
-          withRoot: ${{ env.withRoot }}
-          withSUSFS: ${{ env.withSUSFS }}
-          whichSUSFS: ${{ matrix.repos.whichSUSFS }}
-          KNAME: ${{ env.KNAME }}
-        run: |
-          BKB_YML=releases
-          chmod +x BKB/kernel_patches/bkb/$BKB_YML/add_susfs_patches.sh
-          ./BKB/kernel_patches/bkb/$BKB_YML/add_susfs_patches.sh
+          echo "Patching Kernel Source for 4.14..."
+          patch -p1 --forward < susfs_repo/kernel_patches/50_add_susfs_in_kernel-4.14.patch || echo "Patch applied or skipped"
+          
+          rm -rf susfs_repo
 
       - name: "👍 Make defconfig"
         working-directory: ${{ env.KERNEL_NAME }}
         env:
           args: ${{ steps.generate-args.outputs.args }}
-          arch: ${{ steps.generate-args.outputs.ARCH }}
         run: |
           make ${{ env.args }} ${{ env.DEFCONFIG_NAME }}
 
@@ -270,27 +261,6 @@ jobs:
           args: ${{ steps.generate-args.outputs.args }}
         run: |
           make ${{ env.args }}
-
-      - name: "☯️ KPM Injection"
-        id: kpm-inject
-        working-directory: ${{ env.KERNEL_NAME }}
-        if: ${{ (env.withRoot == 'sukisu' || env.withRoot == 'resukisu') && env.withKPM == 'true' }}
-        env:
-          arch: ${{ steps.generate-args.outputs.ARCH }}
-          OUT_DIR: ${{ env.OUT_DIR }}
-        run: |
-          BKB_YML=releases
-          chmod +x BKB/kernel_patches/bkb/$BKB_YML/kpm_injection.sh
-          ./BKB/kernel_patches/bkb/$BKB_YML/kpm_injection.sh
-
-      - name: "❤️ Set AnyKernel Name variables"
-        id: anykernel-vars
-        run: |
-          if [ "${{ env.withRoot }}" == "sukisu" ] || [ "${{ env.withRoot }}" == "resukisu" ]; then
-            echo "ROOT_VER=${{ steps.integrate-resukisu.outputs.ROOT_VERSION }}" >> $GITHUB_ENV
-          else
-            echo "ROOT_VER=${{ steps.integrate-kernelsu-next.outputs.ROOT_VERSION }}" >> $GITHUB_ENV
-          fi
 
       - name: "❤️ Pack AnyKernel3.zip"
         if: ${{ env.useAnykernel == 'true' }}
@@ -322,7 +292,7 @@ jobs:
           prerelease: false
           draft: false
           generate_release_notes: false
-          body: "Power kernel By [Saikrishna1504](https://github.com/Saikrishna1504)\nBuild with Github by [cvnertnc](https://github.com/cvnertnc)\nAll Linux kernel patched with [KernelSU-Next](https://github.com/KernelSU-Next/KernelSU-Next) + [SUSFS](https://gitlab.com/simonpunk/susfs4ksu) for Xiaomi Redmi Note 8 Pro (begonia).\n\n**Installation:**\n1. Flash the kernel from this release.\n2. Download and install the Manager\n\nKernelSU Next:\n> [![Stable Version](https://img.shields.io/github/v/release/KernelSU-Next/KernelSU-Next?label=Release&logo=github)](https://github.com/KernelSU-Next/KernelSU-Next/releases/latest) [![Nightly Version](https://img.shields.io/badge/Nightly%20Release-gray?logo=hackthebox&logoColor=fff)](https://nightly.link/KernelSU-Next/KernelSU-Next/workflows/build-manager-ci/next/Manager)\n\n3. Download and install the SUSFS Module:\n> [![Stable Version](https://img.shields.io/github/v/release/sidex15/susfs4ksu-module?label=Release&logo=github)](https://github.com/sidex15/susfs4ksu-module/releases/latest) [![Nightly Version](https://img.shields.io/badge/Nightly%20Release-gray?logo=hackthebox&logoColor=fff)](https://nightly.link/sidex15/susfs4ksu-module/workflows/build/v1.5.2+)\n\n4. Download and install Mountify Module [![Mountify Module](https://img.shields.io/github/v/release/backslashxx/mountify?label=Release&logo=github)](https://github.com/backslashxx/mountify/releases/latest)"
+          body: "Power kernel By [Saikrishna1504](https://github.com/Saikrishna1504)\nBuild with Github by [cvnertnc](https://github.com/cvnertnc)\nAll Linux kernel patched with [KernelSU-Next](https://github.com/KernelSU-Next/KernelSU-Next) + [SUSFS](https://gitlab.com/simonpunk/susfs4ksu) for Xiaomi Redmi Note 8 Pro (begonia)."
           files: "${{ env.WORKSPACE }}/${{ env.KERNEL_DEVICE }}-${{ env.ROOT_VER }}-${{ env.KERNEL_NAME }}-${{ env.builddate }}.zip"
           fail_on_unmatched_files: true
           preserve_order: true
