@@ -5,8 +5,8 @@
       "device": "begonia",
       "defconfig": "begonia_user_defconfig",
       "name": "Perf-Non-Patches",
-      "repo": "https://github.com/WuXing90/android_kernel_xiaomi_mt6785_w",
-      "branch": "16-dev"
+      "repo": "https://github.com/Yuvi-cpu-dotcom/Blah_blah",
+      "branch": "bka"
     },
     "withRoot": "none",
     "withSUSFS": false,
@@ -50,12 +50,12 @@
     }
   },
   {
-    "kernelName": "wuxin-perf",
+    "kernelName": "Yuvi-perf",
     "kernelSource": {
       "device": "begonia",
       "defconfig": "begonia_user_defconfig",
       "name": "Perf-KSU-Next-SUSFS",
-      "repo": "https://github.com/WuXing90/kernel_xiaomi_mt6785",
+      "repo": "https://github.com/Yuvi-cpu-dotcom/Blah_blah",
       "branch": "bka"
     },
     "withRoot": "ksun",
