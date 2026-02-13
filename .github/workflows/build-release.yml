@@ -138,36 +138,22 @@ jobs:
           echo "🤔 There is $toolchains_num defined toolchains."
           for ((i=0;i<toolchains_num;i++)); do
             toolchain_name=$(echo $toolchains | jq -r ".[$i].name")
-            # Github
             toolchain_repo=$(echo $toolchains | jq -r ".[$i].repo")
             toolchain_branch=$(echo $toolchains | jq -r ".[$i].branch")
-            # From archive
             toolchain_url=$(echo $toolchains | jq -r ".[$i].url")
-
-            echo $toolchain_url
+            
             if [ -z "${toolchain_url:-}" ] || [ "$toolchain_url" = "null" ];  then
               git clone --recursive --depth=1 -j $(nproc) --branch $toolchain_branch $toolchain_repo $toolchain_name
-              echo "🤔 Clone $toolchain_name => ($toolchain_repo)"
             else
               wget "$toolchain_url"
               filename="${toolchain_url##*/}"
               mkdir -p $toolchain_name
               case "$filename" in
-                *.zip)
-                  unzip -d $toolchain_name "$filename"
-                  ;;
-                *.tar)
-                  tar xvf "$filename" -C $toolchain_name
-                  ;;
-                *.tar.gz)
-                  tar zxvf "$filename" -C $toolchain_name
-                  ;;
-                *.rar)
-                  unrar x "$filename" $toolchain_name
-                  ;;
-                *)
-                  echo "unknown file type: $filename"
-                  ;;
+                *.zip) unzip -d $toolchain_name "$filename" ;;
+                *.tar) tar xvf "$filename" -C $toolchain_name ;;
+                *.tar.gz) tar zxvf "$filename" -C $toolchain_name ;;
+                *.rar) unrar x "$filename" $toolchain_name ;;
+                *) echo "unknown file type: $filename" ;;
               esac
             fi
 
@@ -179,8 +165,6 @@ jobs:
       - name: "😎 Set args"
         id: generate-args
         run: |
-          echo "🤔 PATH Variable: $PATH"
-
           ARCH=$(echo $params | jq -r ".ARCH")
           CC=$(echo $params | jq -r ".CC")
 
@@ -192,11 +176,9 @@ jobs:
             args="$args ARCH=$ARCH"
           fi
           if [ -n "$CC" ]; then
-
             if [[ "$CC" == *"/"* ]]; then
               CC=${{ env.WORKSPACE }}/$CC
             fi
-
             if [ ${{ env.ccache }} = true ]; then
               args="$args CC=\"ccache $CC\""
             else
@@ -211,8 +193,7 @@ jobs:
             fi
             args="$args $key=$value"
           done < <(jq -r '.externalCommand | to_entries[] | "\(.key)=\(.value)"' <<< "$params")
-
-          echo "🤔 $args"
+          
           echo "ARCH=$ARCH" >> $GITHUB_OUTPUT
           echo "args=$args" >> $GITHUB_OUTPUT
 
@@ -220,15 +201,12 @@ jobs:
         id: receiving-scripts
         working-directory: ${{ env.KERNEL_NAME }}
         run: |
-          if [ -d "./BKB" ]; then
-            rm -rf "./BKB"
-          fi
-
+          if [ -d "./BKB" ]; then rm -rf "./BKB"; fi
           BKB_BRANCH=main
-
           git clone --recursive -j $(nproc) --branch $BKB_BRANCH https://github.com/vc-teahouse/susfs4ksu-begonia BKB
 
       - name: "🔥 Integrate ReSukiSU"
+        id: integrate-resukisu
         working-directory: ${{ env.KERNEL_NAME }}
         if: ${{ env.withRoot == 'sukisu' || env.withRoot == 'resukisu' }}
         run: |
@@ -237,17 +215,33 @@ jobs:
           
           echo "Running ReSukiSU setup..."
           cd resukisu
-          # Yahan ham root directory (.) pass kar rahe hain kyunki working-directory kernel name set hai
           bash ks_setup.sh .. 
           cd ..
           
-          # Clean up setup files to avoid build conflicts
           rm -rf resukisu
+          echo "ROOT_VERSION=ReSukiSU" >> $GITHUB_OUTPUT
+
+      - name: "😋 Integrate KernelSU or KernelSU-Next"
+        id: integrate-kernelsu-next
+        working-directory: ${{ env.KERNEL_NAME }}
+        if: ${{ env.withRoot == 'ksu' || env.withRoot == 'ksun' }}
+        env:
+          arch: ${{ steps.generate-args.outputs.ARCH }}
+          DEFCONFIG_NAME: ${{ env.DEFCONFIG_NAME }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GITHUB_OUTPUT: ${{ github.output_path }}
+          withRoot: ${{ env.withRoot }}
+          withKPM: ${{ env.withKPM }}
+          KNAME: ${{ env.KNAME }}
+        run: |
+          BKB_YML=releases
+          chmod +x BKB/kernel_patches/bkb/$BKB_YML/integrate_kernelsu.sh
+          ./BKB/kernel_patches/bkb/$BKB_YML/integrate_kernelsu.sh
 
       - name: "🥷 Add SUSFS patches"
         id: add-susfs-patches
         working-directory: ${{ env.KERNEL_NAME }}
-        if: ${{ (env.withRoot == 'ksu' || env.withRoot == 'sukisu' || env.withRoot == 'ksun') && env.withSUSFS == 'true' }}
+        if: ${{ (env.withRoot == 'ksu' || env.withRoot == 'sukisu' || env.withRoot == 'ksun' || env.withRoot == 'resukisu') && env.withSUSFS == 'true' }}
         env:
           arch: ${{ steps.generate-args.outputs.ARCH }}
           DEFCONFIG_NAME: ${{ env.DEFCONFIG_NAME }}
@@ -268,7 +262,6 @@ jobs:
           args: ${{ steps.generate-args.outputs.args }}
           arch: ${{ steps.generate-args.outputs.ARCH }}
         run: |
-          echo "PATH Variable: $PATH"
           make ${{ env.args }} ${{ env.DEFCONFIG_NAME }}
 
       - name: "🎶 Build kernel"
@@ -276,13 +269,12 @@ jobs:
         env:
           args: ${{ steps.generate-args.outputs.args }}
         run: |
-          echo "PATH Variable: $PATH"
           make ${{ env.args }}
 
       - name: "☯️ KPM Injection"
         id: kpm-inject
         working-directory: ${{ env.KERNEL_NAME }}
-        if: ${{ env.withRoot == 'sukisu' && env.withKPM == 'true' }}
+        if: ${{ (env.withRoot == 'sukisu' || env.withRoot == 'resukisu') && env.withKPM == 'true' }}
         env:
           arch: ${{ steps.generate-args.outputs.ARCH }}
           OUT_DIR: ${{ env.OUT_DIR }}
@@ -291,18 +283,24 @@ jobs:
           chmod +x BKB/kernel_patches/bkb/$BKB_YML/kpm_injection.sh
           ./BKB/kernel_patches/bkb/$BKB_YML/kpm_injection.sh
 
+      - name: "❤️ Set AnyKernel Name variables"
+        id: anykernel-vars
+        run: |
+          if [ "${{ env.withRoot }}" == "sukisu" ] || [ "${{ env.withRoot }}" == "resukisu" ]; then
+            echo "ROOT_VER=${{ steps.integrate-resukisu.outputs.ROOT_VERSION }}" >> $GITHUB_ENV
+          else
+            echo "ROOT_VER=${{ steps.integrate-kernelsu-next.outputs.ROOT_VERSION }}" >> $GITHUB_ENV
+          fi
+
       - name: "❤️ Pack AnyKernel3.zip"
         if: ${{ env.useAnykernel == 'true' }}
         env:
           arch: ${{ steps.generate-args.outputs.ARCH }}
-          anykernel: "${{ env.WORKSPACE }}/${{ env.KERNEL_DEVICE }}-${{ steps.integrate-kernelsu-next.outputs.ROOT_VERSION }}-${{ env.KERNEL_NAME }}-${{ env.builddate }}"
+          anykernel: "${{ env.WORKSPACE }}/${{ env.KERNEL_DEVICE }}-${{ env.ROOT_VER }}-${{ env.KERNEL_NAME }}-${{ env.builddate }}"
         run: |
-          ls -al
-
           if [ -e "${{ env.OUT_DIR }}/arch/${{ env.arch }}/boot/Image.gz" ]; then
             cp -f ${{ env.OUT_DIR }}/arch/${{ env.arch }}/boot/Image.gz ./AnyKernel3/
           fi
-
           cd AnyKernel3/
           zip -q -r "${{ env.anykernel }}.zip" *
 
@@ -310,7 +308,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: ${{ env.useAnykernel == 'true' }}
         with:
-          name: "${{ env.KERNEL_DEVICE }}-${{ steps.integrate-kernelsu-next.outputs.ROOT_VERSION }}-${{ env.KERNEL_NAME }}-${{ env.builddate }}"
+          name: "${{ env.KERNEL_DEVICE }}-${{ env.ROOT_VER }}-${{ env.KERNEL_NAME }}-${{ env.builddate }}"
           path: AnyKernel3/*
 
       - name: 🧧 Create GitHub Release => (${{ env.builddate }})
@@ -325,6 +323,6 @@ jobs:
           draft: false
           generate_release_notes: false
           body: "Power kernel By [Saikrishna1504](https://github.com/Saikrishna1504)\nBuild with Github by [cvnertnc](https://github.com/cvnertnc)\nAll Linux kernel patched with [KernelSU-Next](https://github.com/KernelSU-Next/KernelSU-Next) + [SUSFS](https://gitlab.com/simonpunk/susfs4ksu) for Xiaomi Redmi Note 8 Pro (begonia).\n\n**Installation:**\n1. Flash the kernel from this release.\n2. Download and install the Manager\n\nKernelSU Next:\n> [![Stable Version](https://img.shields.io/github/v/release/KernelSU-Next/KernelSU-Next?label=Release&logo=github)](https://github.com/KernelSU-Next/KernelSU-Next/releases/latest) [![Nightly Version](https://img.shields.io/badge/Nightly%20Release-gray?logo=hackthebox&logoColor=fff)](https://nightly.link/KernelSU-Next/KernelSU-Next/workflows/build-manager-ci/next/Manager)\n\n3. Download and install the SUSFS Module:\n> [![Stable Version](https://img.shields.io/github/v/release/sidex15/susfs4ksu-module?label=Release&logo=github)](https://github.com/sidex15/susfs4ksu-module/releases/latest) [![Nightly Version](https://img.shields.io/badge/Nightly%20Release-gray?logo=hackthebox&logoColor=fff)](https://nightly.link/sidex15/susfs4ksu-module/workflows/build/v1.5.2+)\n\n4. Download and install Mountify Module [![Mountify Module](https://img.shields.io/github/v/release/backslashxx/mountify?label=Release&logo=github)](https://github.com/backslashxx/mountify/releases/latest)"
-          files: "${{ env.WORKSPACE }}/${{ env.KERNEL_DEVICE }}-${{ steps.integrate-kernelsu-next.outputs.ROOT_VERSION }}-${{ env.KERNEL_NAME }}-${{ env.builddate }}.zip"
+          files: "${{ env.WORKSPACE }}/${{ env.KERNEL_DEVICE }}-${{ env.ROOT_VER }}-${{ env.KERNEL_NAME }}-${{ env.builddate }}.zip"
           fail_on_unmatched_files: true
           preserve_order: true
